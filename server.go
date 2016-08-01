@@ -27,8 +27,10 @@ func ServeHome(w http.ResponseWriter, r *http.Request) {
     loginOrOutUrl, _ = user.LogoutURL(ctx, "/")
   }
   w.Header().Set("Content-type", "text/html; charset=utf-8")
-  index := template.Must(template.New("layout.html").ParseFiles("templates/layout.html"))
-  if err := index.Execute(w, map[string]interface{}{
+  index := template.Must(template.New("layout.html").ParseFiles(
+    "templates/layout.html",
+    "templates/index.html"))
+  if err := index.ExecuteTemplate(w, "base", map[string]interface{}{
     "User": u,
     "LoginOrOutUrl": loginOrOutUrl,
   }); err != nil {
@@ -38,8 +40,10 @@ func ServeHome(w http.ResponseWriter, r *http.Request) {
 
 func ServeAdmin(w http.ResponseWriter, r *http.Request) {
   w.Header().Set("Content-type", "text/html; charset=utf-8")
-  index := template.Must(template.New("admin.html").ParseFiles("templates/admin.html"))
-  if err := index.Execute(w, map[string]interface{}{}); err != nil {
+  index := template.Must(template.New("layout.html").ParseFiles(
+    "templates/layout.html",
+    "templates/admin.html"))
+  if err := index.ExecuteTemplate(w, "base", map[string]interface{}{}); err != nil {
     http.Error(w, err.Error(), http.StatusInternalServerError)
   }
 }

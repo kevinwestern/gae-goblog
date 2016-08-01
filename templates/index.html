@@ -1,0 +1,7 @@
+{{define "content"}}
+  {{if .User}}
+    <a href="{{.LoginOrOutUrl}}">Logout!</a>
+  {{else}}
+    <a href="{{.LoginOrOutUrl}}">Login!</a>
+  {{end}}
+{{end}}

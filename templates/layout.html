@@ -1,13 +1,11 @@
+{{define "base"}}
 <!DOCTYPE html>
 <html>
   <head>
     <title>Title</title>
   </head>
   <body>
-    {{if .User}}
-      <a href="{{.LoginOrOutUrl}}">Logout!</a>
-    {{else}}
-      <a href="{{.LoginOrOutUrl}}">Login!</a>
-    {{end}}
+    {{template "content" .}}
   </body>
 </html>
+{{end}}
