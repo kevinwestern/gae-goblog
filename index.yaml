@@ -1,5 +1,5 @@
 indexes:
-- kind: blog_post
+- kind: Posts
   properties:
   - name: Date
     direction: desc

@@ -1,0 +1,20 @@
+{{define "content"}}
+  <form action="/admin/post/{{.PostId}}" method="POST">
+    <div>
+      <label for="title">Title</label>
+      <input id="title" type="text" name="title" value="{{.Post.Title}}"/>
+    </div>
+    <div>
+      <label for="draft">Draft</label>
+      <select id="draft" name="draft">
+        <option value="false" {{if eq .Post.IsDraft false }}selected{{end}}>False</option>
+        <option value="true" {{if .Post.IsDraft }}selected{{end}}>True</option>
+      </select>
+    </div>
+    <div>
+      <label for="content">Content</label>
+      <textarea id="content" name="content">{{.Post.Content}}</textarea>
+    </div>
+    <input type="submit">
+  </form>
+{{end}}
