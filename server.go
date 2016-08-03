@@ -28,9 +28,9 @@ func init() {
   r.HandleFunc("/", ServeHome)
   r.HandleFunc("/admin", ServeAdmin)
   r.HandleFunc("/admin/post/new", ServeNewPost)
-  r.HandleFunc("/admin/post/edit/{id}", ServeEditPost)
-  r.HandleFunc("/admin/post/{id}", ServeUpdatePost).Methods("POST", "PUT")
-  r.HandleFunc("/blog/{date:\\d{4}/\\d{2}/\\d{2}}/{title}", ServePostHandler).
+  r.HandleFunc("/admin/post/edit/{slug}", ServeEditPost)
+  r.HandleFunc("/admin/post/{slug}", ServeUpdatePost).Methods("POST", "PUT")
+  r.HandleFunc("/blog/{date:\\d{4}/\\d{2}/\\d{2}}/{slug}", ServePostHandler).
     Name("post")
   http.Handle("/", r)
 }
@@ -65,7 +65,24 @@ func ServeHome(w http.ResponseWriter, r *http.Request) {
 }
 
 func ServePostHandler(w http.ResponseWriter, r *http.Request) {
+  ctx := appengine.NewContext(r)
+  vars := mux.Vars(r)
+  slug := vars["slug"]
 
+  key := postKey(ctx, slug)
+  post := &Post{}
+  if err := datastore.Get(ctx, key, post); err != nil {
+
+  }
+  w.Header().Set("Content-type", "text/html; charset=utf-8")
+  index := template.Must(template.New("layout.html").ParseFiles(
+    "templates/layout.html",
+    "templates/show-post.html"))
+  if err := index.ExecuteTemplate(w, "base", map[string]interface{}{
+    "Post": post,
+  }); err != nil {
+    http.Error(w, err.Error(), http.StatusInternalServerError)
+  }
 }
 
 func ServeAdmin(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +107,7 @@ func ServeAdmin(w http.ResponseWriter, r *http.Request) {
 }
 
 type Post struct {
+  Slug *datastore.Key
   Title string
   Content string
   PublishedDate time.Time
@@ -98,39 +116,48 @@ type Post struct {
 }
 
 func (p *Post) Url() *url.URL {
-  url, err := r.Get("post").URL("date", p.PublishedDate.Format("2006/01/02"), "title", p.HyphenatedTitle())
+  url, err := r.Get("post").URL("date", p.PublishedDate.Format("2006/01/02"), "slug", p.Slug.StringID())
   if err != nil {
     panic(err)
   }
   return url
 }
 
-func (p *Post) HyphenatedTitle() string {
-  return strings.Replace(p.Title, " ", "-", -1)
+func hyphenizeTitle (title string) string {
+  return strings.Replace(title, " ", "-", -1)
 }
 
-//func postKey(c appengine.Context) *datastore.Key {
-//  return datastore.NewKey(c, "Posts", "default_posts", 0, nil)
-//}
+func postKey(c appengine.Context, slug string) *datastore.Key {
+  return datastore.NewKey(c, "Posts", slug, 0, nil)
+}
+
+func createSlug(ctx appengine.Context, p *Post) *datastore.Key {
+  if p.Slug != nil {
+    return p.Slug
+  }
+  hyphenatedTitle := hyphenizeTitle(p.Title)
+  return postKey(ctx, hyphenatedTitle)
+}
 
 func ServeNewPost(w http.ResponseWriter, r *http.Request) {
   ctx := appengine.NewContext(r)
   w.Header().Set("Content-type", "text/html; charset=utf-8")
   post := Post{
-    Title: "New Post",
+    Title: fmt.Sprintf("Post %s", time.Now().Format("20060102030405")),
     Content: "Fill me in",
     PublishedDate: time.Now(),
     EditDate: time.Now(),
     IsDraft: true,
   }
+  slug := createSlug(ctx, &post)
+  post.Slug = slug
 
-  incomplete_key := datastore.NewIncompleteKey(ctx, "Posts", nil)
-  key, err := datastore.Put(ctx, incomplete_key, &post)
+  _, err := datastore.Put(ctx, slug, &post)
   if err != nil {
     http.Error(w, err.Error(), http.StatusInternalServerError)
     return
   }
-  http.Redirect(w, r, fmt.Sprintf("/admin/post/edit/%s", key.Encode()), http.StatusFound)
+  http.Redirect(w, r, fmt.Sprintf("/admin/post/edit/%s", slug.StringID()), http.StatusFound)
 }
 
 func ServeEditPost(w http.ResponseWriter, r *http.Request) {
@@ -138,15 +165,10 @@ func ServeEditPost(w http.ResponseWriter, r *http.Request) {
   w.Header().Set("Content-type", "text/html; charset=utf-8")
 
   vars := mux.Vars(r)
-  id := vars["id"]
+  slug := vars["slug"]
 
-  key, err := datastore.DecodeKey(id)
-  ctx.Infof("key is %s", key)
-  if err != nil {
-    // TODO(kevin): Do something
-  }
-  post := &Post{}
-  ctx.Infof("About to fetch post")
+  key := postKey(ctx, slug)
+  post := &Post{Slug: key}
   if err := datastore.Get(ctx, key, post); err != nil {
 
   }
@@ -156,7 +178,7 @@ func ServeEditPost(w http.ResponseWriter, r *http.Request) {
     "templates/edit-post.html"))
   if err := index.ExecuteTemplate(w, "base", map[string]interface{}{
     "Post": post,
-    "PostId": key.Encode(),
+    "PostId": key.StringID(),
   }); err != nil {
     http.Error(w, err.Error(), http.StatusInternalServerError)
   }
@@ -164,29 +186,30 @@ func ServeEditPost(w http.ResponseWriter, r *http.Request) {
 
 func ServeUpdatePost(w http.ResponseWriter, r *http.Request) {
   ctx := appengine.NewContext(r)
-
   vars := mux.Vars(r)
-  id := vars["id"]
+  slug := vars["slug"]
 
-  key, err := datastore.DecodeKey(id)
-  ctx.Infof("key is %s", key)
-  if err != nil {
-    // TODO(kevin): Do something
-  }
+  key := postKey(ctx, slug)
   post := &Post{}
-  ctx.Infof("About to fetch post")
   if err := datastore.Get(ctx, key, post); err != nil {
 
   }
 
-  post.Title = r.FormValue("title")
+  if post.Title != r.FormValue("title") {
+    datastore.Delete(ctx, key)
+    post.Slug = nil
+    post.Title = r.FormValue("title")
+    post.Slug = createSlug(ctx, post)
+  }
   post.Content = r.FormValue("content")
-  post.IsDraft, err = strconv.ParseBool(r.FormValue("draft"))
+  if isDraft, isDraftErr := strconv.ParseBool(r.FormValue("draft")); isDraftErr == nil {
+    post.IsDraft = isDraft
+  }
 
-  _, putterr := datastore.Put(ctx, key, post)
-  if putterr != nil {
-    http.Error(w, err.Error(), http.StatusInternalServerError)
+  _, puterr := datastore.Put(ctx, post.Slug, post)
+  if puterr != nil {
+    http.Error(w, puterr.Error(), http.StatusInternalServerError)
     return
   }
-  http.Redirect(w, r, fmt.Sprintf("/admin/post/edit/%s", key.Encode()), http.StatusFound)
+  http.Redirect(w, r, fmt.Sprintf("/admin/post/edit/%s", post.Slug.StringID()), http.StatusFound)
 }
