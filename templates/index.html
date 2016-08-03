@@ -4,4 +4,16 @@
   {{else}}
     <a href="{{.LoginOrOutUrl}}">Login!</a>
   {{end}}
+
+  {{range .Posts}}
+    <div class="artlicle">
+      <h3 class="article-title">
+        <a href="{{.Url}}">{{.Title}}</a>
+      </h3>
+      <div class="article-content">
+        {{.Content}}
+      </div>
+    </div>
+    <hr>
+  {{end}}
 {{end}}

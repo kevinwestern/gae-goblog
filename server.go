@@ -4,7 +4,9 @@ import (
   "fmt"
   "html/template"
   "net/http"
+  "net/url"
   "strconv"
+  "strings"
   "time"
 
   "github.com/gorilla/mux"
@@ -14,13 +16,22 @@ import (
   "appengine/user"
 )
 
+var templateFunctions = template.FuncMap {
+  "postToUrl": func (p Post) string {
+    return p.PublishedDate.Format("/blog/2016/03/31")
+  },
+}
+
+var r *mux.Router = mux.NewRouter()
+
 func init() {
-  r := mux.NewRouter()
   r.HandleFunc("/", ServeHome)
   r.HandleFunc("/admin", ServeAdmin)
   r.HandleFunc("/admin/post/new", ServeNewPost)
   r.HandleFunc("/admin/post/edit/{id}", ServeEditPost)
   r.HandleFunc("/admin/post/{id}", ServeUpdatePost).Methods("POST", "PUT")
+  r.HandleFunc("/blog/{date:\\d{4}/\\d{2}/\\d{2}}/{title}", ServePostHandler).
+    Name("post")
   http.Handle("/", r)
 }
 
@@ -33,16 +44,28 @@ func ServeHome(w http.ResponseWriter, r *http.Request) {
   } else {
     loginOrOutUrl, _ = user.LogoutURL(ctx, "/")
   }
+
+  query := datastore.NewQuery("Posts").Order("-PublishedDate").Limit(10)
+  posts := make([]Post, 0, 10)
+  if _, query_error := query.GetAll(ctx, &posts); query_error != nil {
+    http.Error(w, query_error.Error(), http.StatusInternalServerError)
+    return
+  }
   w.Header().Set("Content-type", "text/html; charset=utf-8")
-  index := template.Must(template.New("layout.html").ParseFiles(
+  index := template.Must(template.New("layout.html").Funcs(templateFunctions).ParseFiles(
     "templates/layout.html",
     "templates/index.html"))
   if err := index.ExecuteTemplate(w, "base", map[string]interface{}{
     "User": u,
     "LoginOrOutUrl": loginOrOutUrl,
+    "Posts": posts,
   }); err != nil {
     http.Error(w, err.Error(), http.StatusInternalServerError)
   }
+}
+
+func ServePostHandler(w http.ResponseWriter, r *http.Request) {
+
 }
 
 func ServeAdmin(w http.ResponseWriter, r *http.Request) {
@@ -72,6 +95,18 @@ type Post struct {
   PublishedDate time.Time
   EditDate time.Time
   IsDraft bool
+}
+
+func (p *Post) Url() *url.URL {
+  url, err := r.Get("post").URL("date", p.PublishedDate.Format("2006/01/02"), "title", p.HyphenatedTitle())
+  if err != nil {
+    panic(err)
+  }
+  return url
+}
+
+func (p *Post) HyphenatedTitle() string {
+  return strings.Replace(p.Title, " ", "-", -1)
 }
 
 //func postKey(c appengine.Context) *datastore.Key {
