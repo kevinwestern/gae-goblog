@@ -1,3 +1,13 @@
 {{define "content"}}
   <h2>Admin - {{.User.Email}}</h2>
+
+  <ul>
+    {{range .Posts}}
+      <li>
+        <span><a href="{{.Url}}">{{.Title}}</a></span>
+        <span>{{if .IsDraft}}Not Published{{else}}Published{{end}}</span>
+        <span><a href="{{.EditUrl}}">Edit</a></span>
+      </li>
+    {{end}}
+  </ul>
 {{end}}

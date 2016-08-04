@@ -28,7 +28,7 @@ func init() {
   r.HandleFunc("/", ServeHome)
   r.HandleFunc("/admin", ServeAdmin)
   r.HandleFunc("/admin/post/new", ServeNewPost)
-  r.HandleFunc("/admin/post/edit/{slug}", ServeEditPost)
+  r.HandleFunc("/admin/post/edit/{slug}", ServeEditPost).Name("EditPost")
   r.HandleFunc("/admin/post/{slug}", ServeUpdatePost).Methods("POST", "PUT")
   r.HandleFunc("/blog/{date:\\d{4}/\\d{2}/\\d{2}}/{slug}", ServePostHandler).
     Name("post")
@@ -68,7 +68,7 @@ func ServePostHandler(w http.ResponseWriter, r *http.Request) {
   ctx := appengine.NewContext(r)
   vars := mux.Vars(r)
   slug := vars["slug"]
-
+  u := user.Current(ctx)
   key := postKey(ctx, slug)
   post := &Post{}
   if err := datastore.Get(ctx, key, post); err != nil {
@@ -80,6 +80,7 @@ func ServePostHandler(w http.ResponseWriter, r *http.Request) {
     "templates/show-post.html"))
   if err := index.ExecuteTemplate(w, "base", map[string]interface{}{
     "Post": post,
+    "User": u,
   }); err != nil {
     http.Error(w, err.Error(), http.StatusInternalServerError)
   }
@@ -95,12 +96,24 @@ func ServeAdmin(w http.ResponseWriter, r *http.Request) {
     loginOrOutUrl, _ = user.LogoutURL(ctx, "/admin")
   }
   w.Header().Set("Content-type", "text/html; charset=utf-8")
+  count, countErr := datastore.NewQuery("Posts").Count(ctx)
+  if countErr != nil {
+    http.Error(w, countErr.Error(), http.StatusInternalServerError)
+    return
+  }
+  posts := make([]Post, 0, count)
+  _, postsErr := datastore.NewQuery("Posts").Order("-PublishedDate").GetAll(ctx, &posts)
+  if postsErr != nil {
+    http.Error(w, countErr.Error(), http.StatusInternalServerError)
+    return
+  }
   index := template.Must(template.New("layout.html").ParseFiles(
     "templates/layout.html",
     "templates/admin.html"))
   if err := index.ExecuteTemplate(w, "base", map[string]interface{}{
     "User": u,
     "LoginOrOutUrl": loginOrOutUrl,
+    "Posts": posts,
   }); err != nil {
     http.Error(w, err.Error(), http.StatusInternalServerError)
   }
@@ -117,6 +130,14 @@ type Post struct {
 
 func (p *Post) Url() *url.URL {
   url, err := r.Get("post").URL("date", p.PublishedDate.Format("2006/01/02"), "slug", p.Slug.StringID())
+  if err != nil {
+    panic(err)
+  }
+  return url
+}
+
+func (p *Post) EditUrl() *url.URL {
+  url, err := r.Get("EditPost").URL("slug", p.Slug.StringID())
   if err != nil {
     panic(err)
   }
@@ -163,7 +184,6 @@ func ServeNewPost(w http.ResponseWriter, r *http.Request) {
 func ServeEditPost(w http.ResponseWriter, r *http.Request) {
   ctx := appengine.NewContext(r)
   w.Header().Set("Content-type", "text/html; charset=utf-8")
-
   vars := mux.Vars(r)
   slug := vars["slug"]
 

@@ -1,4 +1,7 @@
 {{define "content"}}
+  {{if and .User .User.Admin}}
+    <a href="{{.Post.EditUrl}}">Edit</a>
+  {{end}}
   <h2>{{.Post.Title}}</h2>
   <div>{{.Post.Content}}</div>
 {{end}}
